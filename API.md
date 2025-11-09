@@ -279,3 +279,5 @@ Common HTTP status codes:
 ## Rate Limiting
 
 Currently, there are no rate limits implemented on the API endpoints.
+
+(Spotify and Gemini API rate limits are user-dependant on the plan they use and the model which is used for API calling)

@@ -1,13 +1,11 @@
-# 🎵 MusicAI - AI-Powered Music Discovery
+# 🎵 musicai - AI-Powered Music Discovery
 
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org/)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-lightgrey.svg)](https://flask.palletsprojects.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-3-blue.svg)](https://www.sqlite.org/)
 
-MusicAI is an intelligent music recommendation system that uses AI to analyze your music taste and suggest personalized tracks. It combines the power of Gemini AI for smart recommendations with Spotify's extensive music catalog.
-
-![MusicAI Demo](https://raw.githubusercontent.com/Roots26Hz/musicai/main/demo.gif)
+musicai - is an intelligent music recommendation system that uses AI to analyze your music taste and suggest personalized tracks. It combines the power of Gemini AI for smart recommendations with Spotify's extensive music catalog.
 
 ## ✨ Features
 
@@ -16,7 +14,6 @@ MusicAI is an intelligent music recommendation system that uses AI to analyze yo
 - 📊 **Discovery Stats**: Track your music exploration journey
 - 💾 **Persistent Storage**: Your music preferences are saved between sessions
 - 🎨 **Modern UI**: Clean, responsive interface with loading states
-- 🎵 **Preview Support**: Listen to song previews before adding to your playlist
 
 ## 🏗 Architecture
 
@@ -130,24 +127,25 @@ Visit `http://localhost:3000` to see the app in action!
 
 Full API documentation available in [API.md](./API.md)
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Spotify Web API for music data
 - Gemini AI for smart recommendations
 - React community for awesome tools
 - Flask team for the robust backend framework
+
+## Future Enhancements
+
+- 🎤 Voice-based song search and recommendations
+- 📱 Mobile app support (React Native)
+- 🧠 Advanced AI models for deeper personalization
+- 🌐 Multi-language support for global users
+- 🔔 Push notifications for new recommendations
+- 🛡️ Enhanced privacy controls and data export
+- 🏆 Gamification and achievement badges
+
+
 
 ## 📫 Contact
 
