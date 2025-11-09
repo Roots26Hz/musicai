@@ -12,7 +12,7 @@ class GeminiRecommendationEngine:
     def __init__(self, api_key: str):
         """Initialize Gemini AI with API key using new SDK"""
         self.client = genai.Client(api_key=api_key)
-        self.model_name = 'gemini-2.0-flash-exp'
+        self.model_name = 'gemini-2.5-pro'  # Using the stable Gemini Pro model
         
     def generate_recommendations(self, songs: List[Dict], count: int = 15) -> List[Dict]:
         """
@@ -185,27 +185,67 @@ Return ONLY the JSON array."""
     
     def _prepare_song_context(self, songs: List[Dict]) -> str:
         """
-        Prepare readable context from songs for AI prompt
+        Prepare detailed song context for AI prompt
         """
-        context = []
-        for i, song in enumerate(songs[:20], 1):  # Limit to first 20 songs
+        context = ["PLAYLIST ANALYSIS:"]
+        
+        # Collect unique genres and moods
+        genres = {}
+        moods = {}
+        total_tempo = 0
+        valid_songs = 0
+        
+        # First pass - collect statistics
+        for song in songs[:20]:  # Limit to first 20 songs for analysis
+            if not isinstance(song, dict):
+                continue
+                
+            genre = song.get('genre', 'Unknown')
+            mood = song.get('mood', 'Unknown')
+            tempo = song.get('tempo', 0)
+            
+            genres[genre] = genres.get(genre, 0) + 1
+            moods[mood] = moods.get(mood, 0) + 1
+            
+            if tempo > 0:
+                total_tempo += tempo
+                valid_songs += 1
+        
+        # Add summary statistics
+        avg_tempo = round(total_tempo / valid_songs) if valid_songs > 0 else 0
+        context.append("\nPlaylist Overview:")
+        context.append(f"- Dominant Genres: {', '.join(sorted(genres, key=genres.get, reverse=True)[:3])}")
+        context.append(f"- Common Moods: {', '.join(sorted(moods, key=moods.get, reverse=True)[:3])}")
+        context.append(f"- Average Tempo: {avg_tempo} BPM")
+        
+        # Add individual songs
+        context.append("\nSong Details:")
+        for i, song in enumerate(songs[:20], 1):
+            if not isinstance(song, dict):
+                continue
+                
             title = song.get('title', 'Unknown')
             artist = song.get('artist', 'Unknown')
             genre = song.get('genre', 'Unknown')
             tempo = song.get('tempo', 'Unknown')
             mood = song.get('mood', 'Unknown')
+            popularity = song.get('popularity', 0)
+            energy = song.get('energy', 0.5)
             
-            context.append(f"{i}. {title} by {artist} | Genre: {genre} | Tempo: {tempo} BPM | Mood: {mood}")
+            context.append(
+                f"{i}. {title} by {artist}\n"
+                f"   Genre: {genre} | Tempo: {tempo} BPM | Mood: {mood}\n"
+                f"   Popularity: {popularity}/100 | Energy: {round(energy * 100)}%"
+            )
         
         return "\n".join(context)
     
     def _parse_recommendations(self, response_text: str) -> List[Dict]:
         """
-        Parse JSON recommendations from Gemini response
-        Handles cases where response might have extra text around JSON
+        Parse and validate JSON recommendations from Gemini response
         """
         try:
-            # Try to find JSON array in response
+            # Extract JSON array from response
             start_idx = response_text.find('[')
             end_idx = response_text.rfind(']') + 1
             
@@ -214,32 +254,70 @@ Return ONLY the JSON array."""
                 return []
             
             json_str = response_text[start_idx:end_idx]
+            
+            # Clean up potential formatting issues
+            json_str = json_str.replace('\n', ' ').replace('\r', '')
+            json_str = ' '.join(json_str.split())  # Normalize whitespace
+            
             recommendations = json.loads(json_str)
             
-            # Validate structure
             if not isinstance(recommendations, list):
                 print("Response is not a list")
                 return []
             
-            # Ensure each recommendation has required fields
+            # Validate and normalize each recommendation
             validated_recommendations = []
-            for rec in recommendations:
-                if all(key in rec for key in ['title', 'artist']):
-                    # Add default values for missing fields
-                    rec.setdefault('id', f"rec_{len(validated_recommendations)}")
-                    rec.setdefault('genre', 'Unknown')
-                    rec.setdefault('tempo', 120)
-                    rec.setdefault('mood', 'Neutral')
-                    rec.setdefault('reason', 'Recommended based on your playlist')
-                    rec.setdefault('previewUrl', '#')
-                    validated_recommendations.append(rec)
+            for i, rec in enumerate(recommendations):
+                if not isinstance(rec, dict):
+                    continue
+                    
+                # Required fields check
+                if not all(rec.get(key) for key in ['title', 'artist']):
+                    continue
+                
+                # Normalize and validate fields
+                normalized_rec = {
+                    'id': rec.get('id', f"rec_{i}"),
+                    'title': str(rec['title']).strip(),
+                    'artist': str(rec['artist']).strip(),
+                    'genre': str(rec.get('genre', 'Unknown')).strip(),
+                    'tempo': self._validate_tempo(rec.get('tempo', 120)),
+                    'mood': self._validate_mood(rec.get('mood', 'Neutral')),
+                    'reason': str(rec.get('reason', 'Recommended based on playlist similarity')).strip(),
+                    'previewUrl': rec.get('previewUrl', '#'),
+                    'confidence': float(rec.get('confidence', 0.8)),  # AI confidence in recommendation
+                    'matchScore': float(rec.get('matchScore', 0.7)),  # How well it matches playlist
+                }
+                
+                # Additional validation
+                if len(normalized_rec['title']) < 1 or len(normalized_rec['artist']) < 1:
+                    continue
+                    
+                validated_recommendations.append(normalized_rec)
+            
+            # Sort by match score if available
+            validated_recommendations.sort(key=lambda x: x['matchScore'], reverse=True)
             
             return validated_recommendations
             
         except json.JSONDecodeError as e:
             print(f"JSON parsing error: {str(e)}")
-            print(f"Response text: {response_text[:500]}")  # Print first 500 chars for debugging
+            print(f"Response text: {response_text[:500]}")
             return []
         except Exception as e:
             print(f"Error parsing recommendations: {str(e)}")
             return []
+            
+    def _validate_tempo(self, tempo) -> int:
+        """Validate and normalize tempo value"""
+        try:
+            tempo = int(float(tempo))
+            return max(min(tempo, 300), 40)  # Clamp between 40-300 BPM
+        except (ValueError, TypeError):
+            return 120
+            
+    def _validate_mood(self, mood: str) -> str:
+        """Validate and normalize mood value"""
+        valid_moods = {'Happy', 'Sad', 'Energetic', 'Chill', 'Neutral'}
+        mood = str(mood).strip().title()
+        return mood if mood in valid_moods else 'Neutral'

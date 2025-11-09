@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Music, Plus, X, Play, ThumbsUp, Filter, TrendingUp, BarChart3, Users } from 'lucide-react';
 import './App.css';
+import { importPlaylist, generateRecommendations, calculateStats, fetchStoredImportedSongs, fetchStoredRecommendations, fetchStoredPlaylist } from './api';
 
 function App() {
   // State management
@@ -9,47 +10,132 @@ function App() {
   const [importedSongs, setImportedSongs] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [builtPlaylist, setBuiltPlaylist] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCalculatingStats, setIsCalculatingStats] = useState(false);
+  const [stats, setStats] = useState(null);
   const [selectedFilters, setSelectedFilters] = useState({
     mood: 'all',
     genre: 'all',
     era: 'all'
   });
 
-  // Mock data for demonstration (will be replaced with API calls)
-  const mockImportedSongs = [
-    { id: 1, title: 'Song Name 1', artist: 'Artist 1', genre: 'Pop', tempo: 120, mood: 'Happy' },
-    { id: 2, title: 'Song Name 2', artist: 'Artist 2', genre: 'Rock', tempo: 140, mood: 'Energetic' },
-    { id: 3, title: 'Song Name 3', artist: 'Artist 3', genre: 'Electronic', tempo: 128, mood: 'Chill' }
-  ];
-
-  const mockRecommendations = [
-    { id: 101, title: 'Recommended Song 1', artist: 'New Artist 1', genre: 'Pop', reason: 'Similar tempo and mood to your favorites', previewUrl: '#' },
-    { id: 102, title: 'Recommended Song 2', artist: 'New Artist 2', genre: 'Rock', reason: 'Popular among listeners with similar taste', previewUrl: '#' },
-    { id: 103, title: 'Recommended Song 3', artist: 'New Artist 3', genre: 'Electronic', reason: 'Same genre and energy level', previewUrl: '#' }
-  ];
+  // Using actual data from API
 
   // Handlers
-  const handleImportPlaylist = (e) => {
-    e.preventDefault();
-    // TODO: Connect to backend API
-    setImportedSongs(mockImportedSongs);
+const handleImportPlaylist = async (e) => {
+  e.preventDefault();
+  setIsImporting(true);
+  try {
+    const data = await importPlaylist(playlistUrl);
+    setImportedSongs(data.songs || []);
     setActiveTab('imported');
-  };
+  } catch (error) {
+    console.error('Error importing playlist:', error);
+    alert('Failed to import playlist. Make sure backend is running.');
+  } finally {
+    setIsImporting(false);
+  }
+};
 
-  const handleGenerateRecommendations = () => {
-    // TODO: Connect to AI recommendation API
-    setRecommendations(mockRecommendations);
+const handleGenerateRecommendations = async () => {
+  setIsGenerating(true);
+  try {
+    const data = await generateRecommendations(importedSongs);
+    setRecommendations(data.recommendations || []);
     setActiveTab('recommendations');
+  } catch (error) {
+    console.error('Error generating recommendations:', error);
+    alert('Failed to generate recommendations.');
+  } finally {
+    setIsGenerating(false);
+  }
+};
+
+// Calculate statistics by calling backend /api/stats
+const handleCalculateStats = async () => {
+  // If there are no recommendations or no imported songs, clear stats
+  if (!recommendations || recommendations.length === 0) {
+    setStats(null);
+    return;
+  }
+
+  setIsCalculatingStats(true);
+  try {
+    const res = await calculateStats(importedSongs, recommendations);
+    // backend returns { success: True, stats: { ... } }
+    setStats(res.stats || null);
+  } catch (err) {
+    console.error('Error calculating stats:', err);
+    setStats(null);
+  } finally {
+    setIsCalculatingStats(false);
+  }
+};
+
+  // Load stored data when app starts
+  useEffect(() => {
+    const loadStoredData = async () => {
+      try {
+        // Fetch all stored data in parallel
+        const [importedData, recommendationsData, playlistData] = await Promise.all([
+          fetchStoredImportedSongs(),
+          fetchStoredRecommendations(),
+          fetchStoredPlaylist()
+        ]);
+
+        if (importedData.success) {
+          setImportedSongs(importedData.songs);
+        }
+        if (recommendationsData.success) {
+          setRecommendations(recommendationsData.recommendations);
+        }
+        if (playlistData.success) {
+          setBuiltPlaylist(playlistData.songs);
+        }
+      } catch (error) {
+        console.error('Error loading stored data:', error);
+      }
+    };
+
+    loadStoredData();
+  }, []);
+
+  useEffect(() => {
+    // Auto-calc stats when user navigates to Stats tab and recommendations exist
+    if (activeTab === 'stats') {
+      handleCalculateStats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, recommendations]);  const savePlaylistToServer = async (updatedPlaylist) => {
+    try {
+      const response = await fetch('http://127.0.0.1:5000/api/stored/playlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ songs: updatedPlaylist }),
+      });
+      if (!response.ok) {
+        console.error('Failed to save playlist to server');
+      }
+    } catch (error) {
+      console.error('Error saving playlist:', error);
+    }
   };
 
   const handleAddToPlaylist = (song) => {
     if (!builtPlaylist.find(s => s.id === song.id)) {
-      setBuiltPlaylist([...builtPlaylist, song]);
+      const updatedPlaylist = [...builtPlaylist, song];
+      setBuiltPlaylist(updatedPlaylist);
+      savePlaylistToServer(updatedPlaylist);
     }
   };
 
   const handleRemoveFromPlaylist = (songId) => {
-    setBuiltPlaylist(builtPlaylist.filter(s => s.id !== songId));
+    const updatedPlaylist = builtPlaylist.filter(s => s.id !== songId);
+    setBuiltPlaylist(updatedPlaylist);
+    savePlaylistToServer(updatedPlaylist);
   };
 
   const handleFilterChange = (filterType, value) => {
@@ -72,7 +158,7 @@ function App() {
         <div className="header-content">
           <div className="logo">
             <Music size={32} />
-            <h1>AI Music Recommender</h1>
+            <h1>musicai - An AI Music Recommender</h1>
           </div>
           <nav className="nav-tabs">
             <button 
@@ -113,6 +199,14 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        {(isImporting || isGenerating) && (
+          <div className="loading-overlay" role="status" aria-live="polite">
+            <div className="loading-box">
+              <div className="spinner" />
+              <div className="loading-text">{isImporting ? 'Importing playlist...' : 'Generating recommendations...'}</div>
+            </div>
+          </div>
+        )}
         {/* Import Tab */}
         {activeTab === 'import' && (
           <div className="tab-content">
@@ -128,8 +222,8 @@ function App() {
                   onChange={(e) => setPlaylistUrl(e.target.value)}
                   className="url-input"
                 />
-                <button type="submit" className="btn-primary">
-                  Import Playlist
+                <button type="submit" className="btn-primary" disabled={isImporting}>
+                  {isImporting ? 'Importing...' : 'Import Playlist'}
                 </button>
               </form>
 
@@ -159,8 +253,8 @@ function App() {
           <div className="tab-content">
             <div className="section-header">
               <h2>Imported Songs</h2>
-              <button className="btn-primary" onClick={handleGenerateRecommendations}>
-                Generate Recommendations
+              <button className="btn-primary" onClick={handleGenerateRecommendations} disabled={isGenerating || importedSongs.length === 0}>
+                {isGenerating ? 'Generating...' : 'Generate Recommendations'}
               </button>
             </div>
             
@@ -170,11 +264,6 @@ function App() {
                   <div className="song-info">
                     <h3>{song.title}</h3>
                     <p>{song.artist}</p>
-                    <div className="song-tags">
-                      <span className="tag">{song.genre}</span>
-                      <span className="tag">{song.mood}</span>
-                      <span className="tag">{song.tempo} BPM</span>
-                    </div>
                   </div>
                   <button 
                     className="btn-icon"
@@ -193,35 +282,16 @@ function App() {
           <div className="tab-content">
             <div className="section-header">
               <h2>Personalized Recommendations</h2>
-              <div className="filter-controls">
-                <Filter size={20} />
-                <select 
-                  value={selectedFilters.mood}
-                  onChange={(e) => handleFilterChange('mood', e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">All Moods</option>
-                  <option value="happy">Happy</option>
-                  <option value="sad">Sad</option>
-                  <option value="energetic">Energetic</option>
-                  <option value="chill">Chill</option>
-                </select>
-                <select 
-                  value={selectedFilters.genre}
-                  onChange={(e) => handleFilterChange('genre', e.target.value)}
-                  className="filter-select"
-                >
-                  <option value="all">All Genres</option>
-                  <option value="pop">Pop</option>
-                  <option value="rock">Rock</option>
-                  <option value="electronic">Electronic</option>
-                  <option value="jazz">Jazz</option>
-                </select>
-              </div>
             </div>
             
             <div className="recommendations-feed">
-              {mockRecommendations.map(song => (
+              {recommendations.length === 0 && !isGenerating ? (
+                <div className="empty-state">
+                  <h3>No recommendations yet</h3>
+                  <p>Click Generate Recommendations in the Imported Songs tab to fetch recommendations.</p>
+                </div>
+              ) : (
+                recommendations.map(song => (
                 <div key={song.id} className="recommendation-card">
                   <div className="recommendation-content">
                     <div className="song-info">
@@ -248,7 +318,8 @@ function App() {
                     </div>
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}
@@ -307,26 +378,48 @@ function App() {
         {activeTab === 'stats' && (
           <div className="tab-content">
             <h2>Discovery Statistics</h2>
+            <div style={{ marginBottom: '12px' }}>
+              <button className="btn-secondary" onClick={handleCalculateStats} disabled={isCalculatingStats || recommendations.length === 0}>
+                {isCalculatingStats ? 'Calculating...' : 'Refresh Stats'}
+              </button>
+            </div>
             <div className="stats-grid">
               <div className="stat-card">
                 <Users size={32} />
                 <h3>New Artists</h3>
-                <p className="stat-value">0%</p>
-                <p className="stat-description">of recommendations</p>
+                <p className="stat-value">{stats ? `${stats.newArtistsPercentage ?? 0}%` : '--'}</p>
+                <p className="stat-description">{stats ? `${stats.newArtistsCount ?? 0} new artists` : 'Stats unavailable'}</p>
               </div>
+
               <div className="stat-card">
                 <BarChart3 size={32} />
-                <h3>Genre Breakdown</h3>
-                <p className="stat-description">Coming soon</p>
+                <h3>Average Tempo</h3>
+                <p className="stat-value">{stats ? `${stats.averageTempo ?? 0} BPM` : '--'}</p>
+                <p className="stat-description">Based on recommendations</p>
               </div>
+
               <div className="stat-card">
                 <TrendingUp size={32} />
-                <h3>Decade Distribution</h3>
-                <p className="stat-description">Coming soon</p>
+                <h3>Total Recommendations</h3>
+                <p className="stat-value">{stats ? `${stats.totalRecommendations ?? recommendations.length}` : '--'}</p>
+                <p className="stat-description">Recommendations analyzed</p>
               </div>
             </div>
-            <div className="info-message">
-              Statistics will be available after importing playlists and generating recommendations
+
+            <div style={{ marginTop: '16px' }}>
+              <h3>Mood Breakdown</h3>
+              {stats && stats.moodBreakdown ? (
+                <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  {Object.entries(stats.moodBreakdown).map(([mood, count]) => (
+                    <div key={mood} className="stat-card" style={{ padding: '12px 16px' }}>
+                      <strong>{mood}</strong>
+                      <div style={{ marginTop: '6px' }}>{count} songs</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="stat-description">Mood breakdown will appear here after stats are calculated.</p>
+              )}
             </div>
           </div>
         )}

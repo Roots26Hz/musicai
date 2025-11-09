@@ -1,3 +1,8 @@
+#Program-Wide
+instance/*.db
+*.db
+.env
+
 # dependencies
    /node_modules
    

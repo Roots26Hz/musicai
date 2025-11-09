@@ -156,21 +156,45 @@ class SpotifyService:
             Simplified song dictionary
         """
         try:
-            # Get audio features for tempo and energy
+            if not track or not isinstance(track, dict):
+                print("Invalid track object")
+                return None
+
+            # Get track ID and ensure it exists
             track_id = track.get('id')
-            audio_features = self._get_audio_features(track_id) if track_id else {}
+            if not track_id:
+                print("Track ID not found")
+                return None
+                
+            # Get audio features for tempo and energy
+            audio_features = self._get_audio_features(track_id)
             
-            # Extract basic info
+            # Get album images, ensuring we have a valid list
+            album_images = track.get('album', {}).get('images', [])
+            album_art_url = album_images[0].get('url') if album_images else ''
+            
+            # Get artists, ensuring we have a valid list
+            artists = track.get('artists', [])
+            artist_names = [artist.get('name', '') for artist in artists if artist.get('name')]
+            artist_str = ', '.join(artist_names) if artist_names else 'Unknown Artist'
+            
+            # Extract basic info with proper fallbacks
             song = {
-                'id': track_id or f"track_{track.get('name', 'unknown')}",
-                'title': track.get('name', 'Unknown Title'),
-                'artist': ', '.join([artist['name'] for artist in track.get('artists', [])]),
-                'genre': 'Unknown',  # Spotify doesn't provide genre in track object
-                'tempo': int(audio_features.get('tempo', 120)),
+                'id': track_id,
+                'title': track.get('name', 'Unknown Title').strip(),
+                'artist': artist_str,
+                'albumName': track.get('album', {}).get('name', 'Unknown Album'),
+                'genre': self._get_track_genre(track_id, artists[0].get('id') if artists else None),
+                'tempo': round(float(audio_features.get('tempo', 120))),
                 'mood': self._determine_mood(audio_features),
-                'previewUrl': track.get('preview_url', '#'),
+                'energy': audio_features.get('energy', 0.5),
+                'previewUrl': track.get('preview_url') or '#',
                 'spotifyUrl': track.get('external_urls', {}).get('spotify', '#'),
-                'albumArt': track.get('album', {}).get('images', [{}])[0].get('url', '')
+                'albumArt': album_art_url,
+                'popularity': track.get('popularity', 50),
+                'explicit': track.get('explicit', False),
+                'durationMs': track.get('duration_ms', 0),
+                'releaseDate': track.get('album', {}).get('release_date', 'Unknown')
             }
             
             return song
@@ -178,6 +202,30 @@ class SpotifyService:
         except Exception as e:
             print(f"Error extracting track metadata: {str(e)}")
             return None
+            
+    def _get_track_genre(self, track_id: str, artist_id: Optional[str]) -> str:
+        """Get genre for a track by checking artist's genres"""
+        try:
+            if not artist_id:
+                return 'Unknown'
+                
+            headers = {'Authorization': f'Bearer {self.access_token}'}
+            url = f"{self.api_base_url}/artists/{artist_id}"
+            
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                artist_data = response.json()
+                genres = artist_data.get('genres', [])
+                if genres:
+                    # Return first genre, capitalized
+                    return genres[0].title()
+            
+            return 'Unknown'
+            
+        except Exception as e:
+            print(f"Error getting track genre: {str(e)}")
+            return 'Unknown'
     
     def _get_audio_features(self, track_id: str) -> Dict:
         """
