@@ -21,7 +21,6 @@ musicai - is an intelligent music recommendation system that uses AI to analyze 
 - Modern React with hooks for state management
 - Real-time loading states and animations
 - Responsive design for all devices
-- Song preview integration
 - Statistics visualization
 
 ### Backend (Flask)
